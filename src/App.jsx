@@ -35,10 +35,12 @@ function resizeImg(dataUrl, maxW = 384, maxH = 384, q = 0.6) {
 
 // ============ API helper (via Netlify Function) ============
 async function callClaude(messages, maxTokens = 1000) {
+  const bodyStr = JSON.stringify({ messages, maxTokens });
+  const bodyBytes = new TextEncoder().encode(bodyStr);
   const res = await fetch("/.netlify/functions/claude-api", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, maxTokens })
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: bodyBytes
   });
   if (!res.ok) {
     let msg = `API ${res.status}`;
