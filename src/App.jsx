@@ -34,15 +34,21 @@ function resizeImg(dataUrl, maxW = 384, maxH = 384, q = 0.6) {
 }
 
 // ============ API helper (via Netlify Function) ============
-https://github.com/76anna/ozkiz-styling-map/edit/main/src/App.jsx
+async function callClaude(messages, maxTokens = 1000) {
+  const res = await fetch("/.netlify/functions/claude-api", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, maxTokens })
   });
   if (!res.ok) {
-    let msg = "API " + res.status;
-    try { var e = await res.json(); msg = e.error || msg; } catch (_) {}
+    let msg = `API ${res.status}`;
+    try { const e = await res.json(); msg = e.error || msg; } catch (_) {}
     throw new Error(msg);
   }
-  return await res.json();
+  const d = await res.json();
+  return d;
 }
+
 // ============ Colors ============
 const C = {
   bg: "#FAFAF8", surface: "#FFFFFF", surfaceAlt: "#F5F3EF",
