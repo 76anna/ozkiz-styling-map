@@ -34,18 +34,13 @@ export default async (request) => {
     return reply({ error: "API key not configured" }, 500);
   }
 
-  var raw;
-  try {
-    raw = await request.text();
-  } catch (e) {
-    return reply({ error: "Cannot read body" }, 400);
-  }
-
   var parsed;
   try {
-    parsed = JSON.parse(raw);
+    var raw = await request.text();
+    var decoded = decodeURIComponent(escape(atob(raw)));
+    parsed = JSON.parse(decoded);
   } catch (e) {
-    return reply({ error: "Invalid JSON" }, 400);
+    return reply({ error: "Invalid request" }, 400);
   }
 
   var messages = parsed.messages;
@@ -56,7 +51,7 @@ export default async (request) => {
   }
 
   try {
-    var apiBody = JSON.stringify({
+    var apiBodyStr = JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: Math.min(maxTokens, 4096),
       messages: messages
@@ -69,12 +64,11 @@ export default async (request) => {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01"
       },
-      body: new TextEncoder().encode(apiBody)
+      body: new TextEncoder().encode(apiBodyStr)
     });
 
     if (!res.ok) {
-      var errText = await res.text();
-      console.error("API error", res.status, errText);
+      console.error("API error", res.status);
       return reply({ error: "API error " + res.status }, res.status);
     }
 
