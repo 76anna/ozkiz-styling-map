@@ -1,14 +1,14 @@
 // netlify/functions/claude-api.mjs
 
-function jsonResponse(data, status = 200) {
+function reply(data, status) {
   return new Response(JSON.stringify(data), {
-    status,
+    status: status || 200,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
+      "Access-Control-Allow-Headers": "Content-Type"
+    }
   });
 }
 
@@ -19,72 +19,69 @@ export default async (request) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
     });
   }
 
   if (request.method !== "POST") {
-    return jsonResponse({ error: "POST only" }, 405);
+    return reply({ error: "POST only" }, 405);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return jsonResponse({ error: "ANTHROPIC_API_KEY not set" }, 500);
+    return reply({ error: "API key not configured" }, 500);
+  }
+
+  let body;
+  try {
+    const raw = await request.text();
+    body = JSON.parse(raw);
+  } catch (e) {
+    return reply({ error: "Invalid JSON body" }, 400);
+  }
+
+  const { messages, maxTokens } = body;
+  if (!messages || !Array.isArray(messages)) {
+    return reply({ error: "Invalid request format" }, 400);
   }
 
   try {
-    const body = await request.json();
-    const { messages, maxTokens = 1000 } = body;
-
-    if (!messages || !Array.isArray(messages)) {
-      return jsonResponse({ error: "Invalid request" }, 400);
-    }
-
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: Math.min(maxTokens, 4096),
-        messages,
-      }),
+        max_tokens: Math.min(maxTokens || 1000, 4096),
+        messages: messages
+      })
     });
 
     if (!res.ok) {
-      const errBody = await res.text();
-      console.error("Claude API error:", res.status, errBody);
-      const msg = res.status === 401
-        ? "API key invalid"
-        : res.status === 429
-        ? "Rate limited"
-        : "API error " + res.status;
-      return jsonResponse({ error: msg }, res.status);
+      const t = await res.text();
+      console.error("API error", res.status, t);
+      return reply({ error: "API error " + res.status }, res.status);
     }
 
     const data = await res.json();
-    const textContent = data.content.map((c) => c.text || "").join("");
-    const cleaned = textContent.replace(/```json|```/g, "").trim();
+    const txt = data.content.map(function(c) { return c.text || ""; }).join("");
+    const cleaned = txt.replace(/```json/g, "").replace(/```/g, "").trim();
 
-    let parsed;
     try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return jsonResponse({ rawText: cleaned });
+      return reply(JSON.parse(cleaned));
+    } catch (e) {
+      return reply({ rawText: cleaned });
     }
-
-    return jsonResponse(parsed);
-
   } catch (err) {
-    console.error("Function error:", err.message);
-    return jsonResponse({ error: err.message || "Server error" }, 500);
+    console.error("Error:", err.message);
+    return reply({ error: "Server error: " + err.message }, 500);
   }
 };
 
 export const config = {
-  path: "/.netlify/functions/claude-api",
+  path: "/.netlify/functions/claude-api"
 };
