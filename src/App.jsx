@@ -34,13 +34,7 @@ function resizeImg(dataUrl, maxW = 384, maxH = 384, q = 0.6) {
 }
 
 // ============ API helper (via Netlify Function) ============
-async function callClaude(messages, maxTokens = 1000) {
-  const payload = JSON.stringify({ messages, maxTokens });
-  const encoded = btoa(unescape(encodeURIComponent(payload)));
-  const res = await fetch("/.netlify/functions/claude-api", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: encoded
+https://github.com/76anna/ozkiz-styling-map/edit/main/src/App.jsx
   });
   if (!res.ok) {
     let msg = "API " + res.status;
