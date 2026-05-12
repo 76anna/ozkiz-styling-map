@@ -1,7 +1,8 @@
 // netlify/functions/claude-api.mjs
 
 function reply(data, status) {
-  return new Response(JSON.stringify(data), {
+  var body = new TextEncoder().encode(JSON.stringify(data));
+  return new Response(body, {
     status: status || 200,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -28,48 +29,61 @@ export default async (request) => {
     return reply({ error: "POST only" }, 405);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return reply({ error: "API key not configured" }, 500);
   }
 
-  let body;
+  var raw;
   try {
-    const raw = await request.text();
-    body = JSON.parse(raw);
+    raw = await request.text();
   } catch (e) {
-    return reply({ error: "Invalid JSON body" }, 400);
+    return reply({ error: "Cannot read body" }, 400);
   }
 
-  const { messages, maxTokens } = body;
+  var parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return reply({ error: "Invalid JSON" }, 400);
+  }
+
+  var messages = parsed.messages;
+  var maxTokens = parsed.maxTokens || 1000;
+
   if (!messages || !Array.isArray(messages)) {
-    return reply({ error: "Invalid request format" }, 400);
+    return reply({ error: "Invalid format" }, 400);
   }
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    var apiBody = JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: Math.min(maxTokens, 4096),
+      messages: messages
+    });
+
+    var res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01"
       },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: Math.min(maxTokens || 1000, 4096),
-        messages: messages
-      })
+      body: new TextEncoder().encode(apiBody)
     });
 
     if (!res.ok) {
-      const t = await res.text();
-      console.error("API error", res.status, t);
+      var errText = await res.text();
+      console.error("API error", res.status, errText);
       return reply({ error: "API error " + res.status }, res.status);
     }
 
-    const data = await res.json();
-    const txt = data.content.map(function(c) { return c.text || ""; }).join("");
-    const cleaned = txt.replace(/```json/g, "").replace(/```/g, "").trim();
+    var data = await res.json();
+    var txt = "";
+    for (var i = 0; i < data.content.length; i++) {
+      txt += data.content[i].text || "";
+    }
+    var cleaned = txt.replace(/```json/g, "").replace(/```/g, "").trim();
 
     try {
       return reply(JSON.parse(cleaned));
@@ -78,7 +92,7 @@ export default async (request) => {
     }
   } catch (err) {
     console.error("Error:", err.message);
-    return reply({ error: "Server error: " + err.message }, 500);
+    return reply({ error: "Server error" }, 500);
   }
 };
 
