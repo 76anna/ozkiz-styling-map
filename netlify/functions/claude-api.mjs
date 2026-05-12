@@ -1,75 +1,38 @@
-// netlify/functions/claude-api.mjs
-
-function reply(data, status) {
-  var body = new TextEncoder().encode(JSON.stringify(data));
-  return new Response(body, {
-    status: status || 200,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    }
-  });
-}
-
-export default async (request) => {
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
-    });
+export async function handler(event) {
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" }, body: "" };
   }
 
-  if (request.method !== "POST") {
-    return reply({ error: "POST only" }, 405);
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: JSON.stringify({ error: "POST only" }) };
   }
 
   var apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return reply({ error: "API key not configured" }, 500);
+    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "API key not set" }) };
   }
 
   var parsed;
   try {
-    var raw = await request.text();
-    var decoded = decodeURIComponent(escape(atob(raw)));
-    parsed = JSON.parse(decoded);
+    var raw = event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf-8") : event.body;
+    parsed = JSON.parse(raw);
   } catch (e) {
-    return reply({ error: "Invalid request" }, 400);
+    return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
 
   var messages = parsed.messages;
   var maxTokens = parsed.maxTokens || 1000;
 
-  if (!messages || !Array.isArray(messages)) {
-    return reply({ error: "Invalid format" }, 400);
-  }
-
   try {
-    var apiBodyStr = JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: Math.min(maxTokens, 4096),
-      messages: messages
-    });
-
     var res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: new TextEncoder().encode(apiBodyStr)
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: Math.min(maxTokens, 4096), messages: messages })
     });
 
     if (!res.ok) {
       console.error("API error", res.status);
-      return reply({ error: "API error " + res.status }, res.status);
+      return { statusCode: res.status, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "API error " + res.status }) };
     }
 
     var data = await res.json();
@@ -79,17 +42,13 @@ export default async (request) => {
     }
     var cleaned = txt.replace(/```json/g, "").replace(/```/g, "").trim();
 
-    try {
-      return reply(JSON.parse(cleaned));
-    } catch (e) {
-      return reply({ rawText: cleaned });
-    }
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+      body: cleaned
+    };
   } catch (err) {
     console.error("Error:", err.message);
-    return reply({ error: "Server error" }, 500);
+    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "Server error" }) };
   }
-};
-
-export const config = {
-  path: "/.netlify/functions/claude-api"
-};
+}
